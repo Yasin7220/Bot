@@ -13,13 +13,14 @@ import os
 # ---------- Config ----------
 FACTION: Optional[str] = None  # will be set by faction chooser
 
-THRESHOLD = 0.85
+THRESHOLD = 0.8
 SCALES = np.linspace(0.6, 1.4, 11)
 IOU_NMS = 0.35
 SAVE_DEBUG = "last_detection.png"
 ROI: Optional[tuple] = None  
 CONFIG_FILE = "config.json"
 BONUS_ACTIVO = False  # True si el bonus está activo
+POPUP_GRACE = 1.0
 # ---------- Data ----------
 @dataclass
 class Detection:
@@ -30,12 +31,13 @@ class Detection:
     score: float
     label: str
 
-# ---------- Global state ----------
+# ---------- Estado Global ----------
 RUNNING = False
 WATCHER_ACTIVE = True
 N_COMANDANTES = 1
 TIMER = 10
 POPUP_ACTIVE = False
+COOLDOWN_LOCKS = {}
 camps_detected: List[Detection] = []
 # templates
 templates = {}
@@ -275,12 +277,10 @@ def calcular_max_ciclos(n_30, n_1h, n_comandantes, bonus_activo):
         return 0
 
     if bonus_activo:
-        # Bonus: cada ciclo puede usar 2x30m O 1x1h por comandante
         ciclos_con_30 = n_30 // (2 * n_comandantes)
         ciclos_con_1h = n_1h // (1 * n_comandantes)
-        return ciclos_con_30 + ciclos_con_1h  # 🔥 sumamos ambos tipos
+        return ciclos_con_30 + ciclos_con_1h
     else:
-        # Normal: cada ciclo necesita 1x30m + 1x1h por comandante
         return min(n_30, n_1h) // n_comandantes
 
 
@@ -329,10 +329,6 @@ def wait_and_click(image_path, confidence=0.85, timeout=3, offset_x=0):
     return False
 
 def safe_attack_click():
-    screen_w, screen_h = pyautogui.size()
-    safe_x, safe_y = screen_w - 10, 50
-    pyautogui.moveTo(safe_x, safe_y, duration=0.08)
-    time.sleep(0.001)
     ok = wait_and_click("assets/attack_icon.png", confidence=0.8, timeout=0.25)
     if not ok:
         log("⚠️ safe_attack_click: no encontró attack_icon.png")
@@ -341,24 +337,27 @@ def safe_attack_click():
 def cool_down_camp(camp: Detection, comandante: int):
     global POPUP_ACTIVE
 
+    camp_id = id(camp)
+
+    log(f"🔒 Lock activado para campamento ({camp.x},{camp.y})")
+
     while POPUP_ACTIVE:
         log("⏳ Esperando que el popup se cierre antes de enfriar el campamento")
-        time.sleep(0.1)
+        time.sleep(0.5)
 
-    log(f"👉 Intentando enfriar campamento en llamas en ({camp.x},{camp.y})")
+    log(f"👉 Enfriando campamento en llamas ({camp.x},{camp.y})")
 
     cx, cy = camp.x + camp.w // 2, camp.y + camp.h // 2
-    pyautogui.moveTo(cx, cy, duration=0.08)
+    pyautogui.moveTo(cx, cy, duration=0.1)
     pyautogui.click()
-    time.sleep(0.2)
-    log("✅ Click en campamento (debería abrir la ventana)")
+    time.sleep(0.6)
 
-    for attempt in range(2):
+    for attempt in range(3):
         if safe_attack_click():
             log("✅ Se encontró y clicó el botón de ataque")
             break
         log(f"⚠️ Intento {attempt+1}: botón de ataque no encontrado")
-        time.sleep(0.2)
+        time.sleep(0.6)
     else:
         log("❌ No se pudo abrir el menú de ataque")
         return False
@@ -371,8 +370,8 @@ def cool_down_camp(camp: Detection, comandante: int):
         relojes_1h = int(spin_1h.get())
     except:
         relojes_1h = 0
-    log(f"📦 Relojes disponibles: {relojes_30} de 30m, {relojes_1h} de 1h")
 
+    log(f"📦 Relojes disponibles: {relojes_30} de 30m, {relojes_1h} de 1h")
     log(f"➡️ Procesando comandante {comandante+1}/{N_COMANDANTES}")
 
     if BONUS_ACTIVO:
@@ -384,7 +383,7 @@ def cool_down_camp(camp: Detection, comandante: int):
                 ("assets/clock_30m.png", {"offset_x": 100}),
                 ("assets/exit.png", {}),
             ]
-            log(f"🕒 Usando 2 relojes de 30m (restan {relojes_30})")
+            log("🕒 Usando 2 relojes de 30m")
         elif relojes_1h >= 1:
             relojes_1h -= 1
             steps = [
@@ -392,9 +391,9 @@ def cool_down_camp(camp: Detection, comandante: int):
                 ("assets/clock_1h.png", {"offset_x": 100}),
                 ("assets/exit.png", {}),
             ]
-            log(f"🕒 Usando 1 reloj de 1h (restan {relojes_1h})")
+            log("🕒 Usando 1 reloj de 1h")
         else:
-            log(f"❌ Sin relojes para el comandante {comandante+1} con bonus activo")
+            log("❌ Sin relojes suficientes")
             return False
     else:
         if relojes_30 >= 1 and relojes_1h >= 1:
@@ -407,18 +406,29 @@ def cool_down_camp(camp: Detection, comandante: int):
                 ("assets/clock_30m.png", {"offset_x": 100}),
                 ("assets/exit.png", {}),
             ]
-            log(f"🕒 Usando 1 reloj de 1h y 1 de 30m (restan {relojes_1h}h, {relojes_30}x30m)")
+            log("🕒 Usando 1 reloj de 1h y 1 de 30m")
         else:
-            log(f"❌ Sin relojes suficientes para el comandante {comandante+1}")
+            log("❌ Sin relojes suficientes")
             return False
 
     for img, opts in steps:
-        log(f"🔍 Buscando {img}...")
-        if wait_and_click(img, confidence=0.85, timeout=3, offset_x=opts.get("offset_x", 0)):
-            log(f"✅ Click en {img}")
+        for attempt in range(3):
+            if POPUP_ACTIVE:
+                log("⚠️ Popup detectado durante la secuencia, pausando...")
+                while POPUP_ACTIVE:
+                    time.sleep(0.3)
+
+            log(f"🔍 Buscando {img} (intento {attempt+1})...")
+            if wait_and_click(img, confidence=0.75, timeout=3, offset_x=opts.get("offset_x", 0)):
+                log(f"✅ Click en {img}")
+                time.sleep(0.4)
+                break
+            else:
+                log(f"⚠️ No se pudo clicar {img} en el intento {attempt+1}")
+                time.sleep(0.4)
         else:
-            log(f"⚠️ No se pudo clicar {img}")
-        time.sleep(opts.get("wait", 0.2))
+            log(f"❌ Falló la secuencia en {img}, abortando")
+            return False
 
     spin_30min.delete(0, "end")
     spin_30min.insert(0, str(relojes_30))
@@ -426,6 +436,7 @@ def cool_down_camp(camp: Detection, comandante: int):
     spin_1h.insert(0, str(relojes_1h))
     log("✅ Actualizados contadores de relojes en la interfaz")
 
+    log(f"🔓 Lock liberado para campamento ({camp.x},{camp.y})")
     return True
 
 def attack_camp(camp: Detection):
@@ -450,7 +461,7 @@ def attack_camp(camp: Detection):
         return False
     time.sleep(0.4)
 
-    if detect_popup("assets/min_troops.png", confidence=0.8, timeout=1.0):
+    if detect_popup("assets/min_troops.png", confidence=0.8, timeout=0.5):
         log("❌ Error: No hay suficientes tropas para atacar")
         wait_and_click("assets/error_close.png")
         wait_and_click("assets/exit2.png")
@@ -576,7 +587,6 @@ def launch_main_window():
     combo_comandante.bind("<<ComboboxSelected>>", actualizar_entry_delay)
     entry_delay.bind("<FocusOut>", lambda e: guardar_delay())
 
-    # Inicializar combobox al cargar la ventana
     actualizar_combo_comandante()
     # Log frame
     log_frame = ttk.Frame(root)
@@ -613,7 +623,6 @@ def launch_main_window():
     def actualizar_max_ciclos(*args):
         global ultimo_log_ciclos, N_COMANDANTES
 
-        # Número de comandantes
         try:
             N_COMANDANTES = int(spin_comandantes.get())
             if N_COMANDANTES < 1:
@@ -731,7 +740,6 @@ def launch_main_window():
             spin_ciclos.delete(0, "end")
             spin_ciclos.insert(0, str(ciclos))
 
-        # Lanzar hilo de ataque
         RUNNING = True
         threading.Thread(target=ciclo_ataques, args=(selected, ciclos), daemon=True).start()
         log(f"▶️ Ciclo de ataques iniciado ({ciclos} ciclos)")
@@ -801,10 +809,12 @@ def choose_faction_window():
 
 # ---------- Watchers ----------
 last_click_time = {}
-COOLDOWN = 1  # seconds
+COOLDOWN = 1  # segundo
+last_popup_time = 0
+
 
 def watcher_popups_templates():
-    global last_click_time, POPUP_ACTIVE
+    global last_click_time, POPUP_ACTIVE, last_popup_time
     while WATCHER_ACTIVE:
         screenshot = pyautogui.screenshot()
         screen_gray = cv2.cvtColor(np.array(screenshot), cv2.COLOR_RGB2GRAY)
@@ -824,9 +834,10 @@ def watcher_popups_templates():
             if loc[0].size > 0:
                 popup_found = True
                 POPUP_ACTIVE = True
+                last_popup_time = current_time
                 for y, x in zip(*loc):
                     h, w = template.shape
-                    cx, cy = x + w//2, y + h//2
+                    cx, cy = x + w // 2, y + h // 2
                     pyautogui.moveTo(cx, cy, duration=0.2)
                     pyautogui.click()
                     last_click_time[name] = current_time
@@ -835,12 +846,23 @@ def watcher_popups_templates():
                 break
 
         if not popup_found:
-            POPUP_ACTIVE = False
+            if current_time - last_popup_time > POPUP_GRACE:
+                POPUP_ACTIVE = False
 
         time.sleep(0.1)
 
+
+def is_cooldown_locked(camp_id):
+    return COOLDOWN_LOCKS.get(camp_id, False)
+
+def start_cooldown(camp_id):
+    COOLDOWN_LOCKS[camp_id] = True
+
+def end_cooldown(camp_id):
+    COOLDOWN_LOCKS[camp_id] = False
+
 def watcher_fire_fast():
-    global camps_detected, WATCHER_ACTIVE, POPUP_ACTIVE
+    global camps_detected, WATCHER_ACTIVE, POPUP_ACTIVE, last_popup_time
     commander_index_map = {id(camp): 0 for camp in camps_detected}
 
     while WATCHER_ACTIVE:
@@ -853,6 +875,12 @@ def watcher_fire_fast():
                 while POPUP_ACTIVE:
                     time.sleep(0.1)
 
+                if time.time() - last_popup_time < POPUP_GRACE:
+                    continue
+
+                if is_cooldown_locked(id(camp)):
+                    continue
+
                 is_fire = detect_fire_roi(camp)
                 camp.label = "fire" if is_fire else "normal"
 
@@ -861,8 +889,10 @@ def watcher_fire_fast():
                     comandante_actual = commander_index_map.get(camp_id, 0)
 
                     if comandante_actual < N_COMANDANTES:
-                        log(f"🔥 Campamento entró en llamas, enfriando comandante {comandante_actual+1}/{N_COMANDANTES}")
+                        log(f"🔥 Campamento en llamas, enfriando comandante {comandante_actual+1}/{N_COMANDANTES}")
+                        start_cooldown(camp_id)
                         success = cool_down_camp(camp, comandante_actual)
+                        end_cooldown(camp_id)
                         if success:
                             commander_index_map[camp_id] = comandante_actual + 1
                     else:
@@ -879,7 +909,6 @@ def ciclo_ataques(target: Detection, ciclos_max):
     ciclos_realizados = 0
 
     while RUNNING and ciclos_realizados < ciclos_max:
-        # Si el campamento está en llamas, enfriarlo primero
         if detect_fire_roi(target):
             log("🔥 Campamento en llamas al inicio, enfriando...")
             while RUNNING and detect_fire_roi(target):
@@ -904,7 +933,6 @@ def ciclo_ataques(target: Detection, ciclos_max):
         ciclos_realizados += 1
         log(f"🔁 Ciclo {ciclos_realizados}/{ciclos_max} completado")
 
-        # Cooldown con vigilancia de fuego
         log(f"⏳ Iniciando cooldown de {TIMER}s")
         end_time = time.time() + TIMER
         last_log = int(TIMER)
