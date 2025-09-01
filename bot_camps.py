@@ -437,24 +437,34 @@ def attack_camp(camp: Detection):
     if not safe_attack_click(): 
         return False
 
-    steps = [
+    pre_attack_steps = [
         "assets/confirm_attack.png",
-        "assets/template_button.png",
-        "assets/attack_button.png",
+        "assets/template_button.png"
+    ]
+
+    for step in pre_attack_steps:
+        if not wait_and_click(step):
+            return False
+
+    if not wait_and_click("assets/attack_button.png"):
+        return False
+    time.sleep(0.4)
+
+    if detect_popup("assets/min_troops.png", confidence=0.8, timeout=1.0):
+        log("❌ Error: No hay suficientes tropas para atacar")
+        wait_and_click("assets/error_close.png")
+        wait_and_click("assets/exit2.png")
+        global RUNNING
+        RUNNING = False
+        return False
+
+    post_attack_steps = [
         "assets/horse_type.png",
         "assets/confirm_attack2.png"
     ]
 
-    for step in steps:
+    for step in post_attack_steps:
         if not wait_and_click(step):
-            if step == "assets/attack_button.png":
-                if detect_popup("assets/error_not_enough_troops.png"):
-                    log("❌ Error: No hay suficientes tropas para atacar")
-                    wait_and_click("assets/error_close.png")
-                    wait_and_click("assets/exit2.png")
-                    global RUNNING
-                    RUNNING = False
-                    return False
             return False
 
     return True
