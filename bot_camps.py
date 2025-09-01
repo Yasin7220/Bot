@@ -378,10 +378,14 @@ def cool_down_camp(camp: Detection, comandante: int):
             log("❌ No se pudo abrir el menú de ataque")
             return False
 
-        try: relojes_30 = int(spin_30min.get())
-        except: relojes_30 = 0
-        try: relojes_1h = int(spin_1h.get())
-        except: relojes_1h = 0
+        try:
+            relojes_30 = int(spin_30min.get())
+        except:
+            relojes_30 = 0
+        try:
+            relojes_1h = int(spin_1h.get())
+        except:
+            relojes_1h = 0
         log(f"📦 Relojes disponibles: {relojes_30} de 30m, {relojes_1h} de 1h")
 
         steps = []
@@ -415,15 +419,23 @@ def cool_down_camp(camp: Detection, comandante: int):
                 log("❌ Sin relojes suficientes")
                 return False
 
+        usados_30 = 0
+        usados_1h = 0
+
         for img, opts in steps:
             for attempt in range(3):
                 while POPUP_ACTIVE:
                     log("⚠️ Popup detectado durante la secuencia, pausando...")
                     time.sleep(0.3)
                 log(f"🔍 Buscando {img} (intento {attempt+1})...")
-                if wait_and_click(img, confidence=0.75, timeout=3, offset_x=opts.get("offset_x",0)):
+                if wait_and_click(img, confidence=0.75, timeout=3, offset_x=opts.get("offset_x", 0)):
                     log(f"✅ Click en {img}")
                     time.sleep(0.4)
+
+                    if "clock_30m.png" in img:
+                        usados_30 += 1
+                    elif "clock_1h.png" in img:
+                        usados_1h += 1
                     break
                 else:
                     log(f"⚠️ No se pudo clicar {img} en el intento {attempt+1}")
@@ -432,27 +444,22 @@ def cool_down_camp(camp: Detection, comandante: int):
                 log(f"❌ Falló la secuencia en {img}, abortando")
                 return False
 
-        if BONUS_ACTIVO:
-            if "clock_30m.png" in [img for img, _ in steps]:
-                relojes_30 -= 2 if relojes_30 >= 2 else 0
-            elif "clock_1h.png" in [img for img, _ in steps]:
-                relojes_1h -= 1
-        else:
-            relojes_30 -= 1
-            relojes_1h -= 1
+        relojes_30 = max(0, relojes_30 - usados_30)
+        relojes_1h = max(0, relojes_1h - usados_1h)
 
         spin_30min.delete(0, "end")
         spin_30min.insert(0, str(relojes_30))
         spin_1h.delete(0, "end")
         spin_1h.insert(0, str(relojes_1h))
-        log("✅ Contadores de relojes actualizados")
+
+        log(f"✅ Se gastaron {usados_30} relojes de 30m y {usados_1h} de 1h. "
+            f"Restan {relojes_30} de 30m y {relojes_1h} de 1h")
 
         log(f"🔓 Lock liberado para campamento ({camp.x},{camp.y})")
         return True
 
     finally:
         end_cooldown(camp_id)
-
 
 def attack_camp(camp: Detection):
     cx, cy = camp.x + camp.w // 2, camp.y + camp.h // 2
