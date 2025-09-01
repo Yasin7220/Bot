@@ -1,0 +1,11 @@
+{
+    "last_camp_index": 0,
+    "N_COMANDANTES": 4,
+    "TIMER": 160,
+    "comandante_delays": {
+        "0": 10.0,
+        "1": 4.0,
+        "2": 11.0,
+        "3": 0.0
+    }
+}
