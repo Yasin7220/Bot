@@ -11,7 +11,7 @@ import json
 import os
 
 # ---------- Config ----------
-FACTION: Optional[str] = None  # will be set by faction chooser
+FACTION: Optional[str] = None
 
 THRESHOLD = 0.8
 SCALES = np.linspace(0.6, 1.4, 11)
@@ -19,7 +19,7 @@ IOU_NMS = 0.35
 SAVE_DEBUG = "last_detection.png"
 ROI: Optional[tuple] = None  
 CONFIG_FILE = "config.json"
-BONUS_ACTIVO = False  # True si el bonus está activo
+BONUS_ACTIVO = False
 POPUP_GRACE = 1.0
 # ---------- Data ----------
 @dataclass
