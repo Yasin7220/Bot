@@ -4,12 +4,14 @@ import numpy as np
 import pyautogui
 import threading
 import tkinter as tk
-from tkinter import ttk, messagebox
+from tkinter import ttk, messagebox, filedialog
 from dataclasses import dataclass
 from typing import List, Optional
 import json
 import os
-
+from PIL import Image, ImageTk
+import subprocess, sys
+import shutil
 # ---------- Config ----------
 FACTION: Optional[str] = None
 
@@ -19,8 +21,11 @@ IOU_NMS = 0.35
 SAVE_DEBUG = "last_detection.png"
 ROI: Optional[tuple] = None  
 CONFIG_FILE = "config.json"
+COORDS_FILE = "berimond_ui_coords.json"
+CONFIG_FILEB = "config_berimond.json"
 BONUS_ACTIVO = False
 POPUP_GRACE = 1.0
+ATTACK_ACTIVE = False
 # ---------- Data ----------
 @dataclass
 class Detection:
@@ -33,6 +38,7 @@ class Detection:
 
 # ---------- Estado Global ----------
 RUNNING = False
+RUNNING_BERIMOND = False
 WATCHER_ACTIVE = True
 N_COMANDANTES = 1
 TIMER = 10
@@ -54,6 +60,166 @@ entry_delay = None
 text_log = None
 label_status = None
 
+# ---------- Config ----------
+TEMPLATE_PATHS = {
+    "attack_button": "assets/attack/attack_button.png",
+    "attack_icon": "assets/attack/attack_icon.png",
+    "horse_gold_coins": "assets/attack/horse_gold_coins.png",
+    "horse_premium": "assets/attack/horse_premium.png",
+    "confirm_attack2": "assets/attack/confirm_attack2.png",
+    "confirm_attack": "assets/attack/confirm_attack.png",
+    "template_button": "assets/attack/template_button.png",
+}
+
+OUTPUT_JSON = "berimond_ui_coords.json"
+CAPTURE_DIR = "capturas"
+
+os.makedirs(CAPTURE_DIR, exist_ok=True)
+
+@dataclass
+class Coord:
+    x: int
+    y: int
+    w: int
+    h: int
+
+# ---------- Cargar coordenadas previas ----------
+if os.path.exists(OUTPUT_JSON):
+    try:
+        with open(OUTPUT_JSON, "r") as f:
+            coords = json.load(f)
+        print(f"🔄 Coordenadas cargadas desde {OUTPUT_JSON}: {coords}")
+    except Exception as e:
+        print(f"⚠️ Error cargando {OUTPUT_JSON}: {e}")
+        coords = {}
+else:
+    coords = {}
+
+# ---------- Utilities ----------
+def safe_imread(path):
+    img = cv2.imread(path, cv2.IMREAD_GRAYSCALE)
+    if img is None:
+        messagebox.showerror("Error", f"No se pudo leer la imagen: {path}")
+    return img
+
+def detect_on_screen(template_path, confidence=THRESHOLD):
+    screenshot = pyautogui.screenshot()
+    screen_rgb = np.array(screenshot)
+    screen_gray = cv2.cvtColor(screen_rgb, cv2.COLOR_RGB2GRAY)
+    template = safe_imread(template_path)
+    if template is None:
+        return None
+    res = cv2.matchTemplate(screen_gray, template, cv2.TM_CCOEFF_NORMED)
+    _, max_val, _, max_loc = cv2.minMaxLoc(res)
+    if max_val >= confidence:
+        h, w = template.shape
+        x, y = max_loc
+        # Dibujar recuadro verde en la captura
+        cv2.rectangle(screen_rgb, (x, y), (x + w, y + h), (0, 255, 0), 2)
+        # Guardar la captura
+        cv2.imwrite(
+            os.path.join(CAPTURE_DIR, f"{os.path.basename(template_path).split('.')[0]}.png"),
+            cv2.cvtColor(screen_rgb, cv2.COLOR_RGB2BGR),
+        )
+        return Coord(x=x + w//2, y=y + h//2, w=w, h=h)
+    return None
+
+# ---------- GUI ----------
+def capture_coord(name):
+    messagebox.showinfo("Instrucciones", f"Muestra la ventana del juego y asegúrate de que {name} sea visible. Se intentará detectar ahora...")
+    attempts = 0
+    while attempts < 100:
+        result = detect_on_screen(TEMPLATE_PATHS[name])
+        if result:
+            coords[name] = {"x": result.x, "y": result.y, "w": result.w, "h": result.h}
+            messagebox.showinfo("Detectado", f"{name} detectado en ({result.x}, {result.y}) y captura guardada")
+            btns[name].config(text=f"{name}: OK")
+            print(f"✅ {name} -> ({result.x}, {result.y})")
+            return
+        else:
+            attempts += 1
+            time.sleep(0.2)
+    messagebox.showwarning("No detectado", f"No se pudo detectar {name} después de varios intentos")
+
+def save_coords():
+    with open(OUTPUT_JSON, "w") as f:
+        json.dump(coords, f, indent=4)
+    messagebox.showinfo("Guardado", f"Coordenadas guardadas en {OUTPUT_JSON}")
+    print(f"💾 Coordenadas guardadas: {coords}")
+
+def add_template():
+    filepaths = filedialog.askopenfilenames(
+        title="Seleccionar imágenes",
+        filetypes=[("Imágenes", "*.png *.jpg *.jpeg")]
+    )
+    if not filepaths:
+        return
+
+    added_count = 0
+
+    for filepath in filepaths:
+        name = os.path.splitext(os.path.basename(filepath))[0]
+
+        # Solo permitir nombres que ya existan en TEMPLATE_PATHS
+        if name not in TEMPLATE_PATHS:
+            messagebox.showwarning(
+                "Nombre no permitido",
+                f"❌ El template '{name}' no existe en el programa, no se añadirá."
+            )
+            continue
+
+        dest_path = os.path.join("assets/attack", os.path.basename(filepath))
+
+        # Copiar archivo a assets/attack (sobrescribe si ya existe)
+        try:
+            shutil.copy(filepath, dest_path)
+        except Exception as e:
+            messagebox.showerror(
+                "Error",
+                f"No se pudo copiar {filepath} -> {dest_path}\n{e}"
+            )
+            continue
+
+        # Actualizar ruta en TEMPLATE_PATHS
+        TEMPLATE_PATHS[name] = dest_path
+
+        # Actualizar botón existente (si es que ya existe)
+        if name in btns:
+            btns[name].config(text=f"{name}: No detectado")
+
+        added_count += 1
+
+    messagebox.showinfo(
+        "Actualización completada",
+        f"✅ Se actualizaron {added_count} imagenes existentes."
+    )
+
+    # Reubicar botones fijos
+    add_btn.grid(row=len(btns), column=0, pady=10)
+    save_btn.grid(row=len(btns)+1, column=0, pady=10)
+# ---------- Main ----------
+def coord_config_window():
+    global coords, TEMPLATE_PATHS, btns, frame, add_btn, save_btn
+
+    coord_root = tk.Toplevel()
+    coord_root.title("Captura Coordenadas Berimond")
+
+    frame = ttk.Frame(coord_root, padding=10)
+    frame.grid(row=0, column=0)
+
+    btns = {}
+    for i, name in enumerate(TEMPLATE_PATHS.keys()):
+        estado = "OK" if name in coords else "No detectado"
+        btn = ttk.Button(frame, text=f"{name}: {estado}", command=lambda n=name: capture_coord(n), width=25)
+        btn.grid(row=i, column=0, pady=5)
+        btns[name] = btn
+
+    add_btn = ttk.Button(frame, text="➕ Añadir nueva imagen", command=add_template)
+    add_btn.grid(row=len(TEMPLATE_PATHS), column=0, pady=10)
+
+    save_btn = ttk.Button(frame, text="Guardar coordenadas", command=save_coords)
+    save_btn.grid(row=len(TEMPLATE_PATHS)+1, column=0, pady=10)
+
 # ---------- Utilities ----------
 def safe_imread(path: str):
     img = cv2.imread(path, cv2.IMREAD_GRAYSCALE)
@@ -62,23 +228,52 @@ def safe_imread(path: str):
     return img
 
 def load_templates():
-    global templates, offer_templates, attack_ui_templates
+    global templates, offer_templates
 
     templates = {}
+    offer_templates = {}
 
-    # Rutas por facción
+    # ---------- CAMPAMENTOS POR FACCION ----------
     if FACTION == "nomadas":
         camp_paths = {
             "normal": ["assets/nomadas/camp_normal.png"],
             "fire":   ["assets/nomadas/camp_fire.png"],
         }
+
     elif FACTION == "samurais":
         camp_paths = {
             "normal": ["assets/samurais/camp_normal.png"],
             "fire":   ["assets/samurais/camp_fire.png"],
         }
 
-    # Camp templates
+    elif FACTION == "berimond":
+        camp_paths = {
+            "normal": ["assets/berimond/camp_normal.png"],
+            "fire":   ["assets/berimond/camp_fire.png"],
+        }
+
+    elif FACTION == "islas":
+        camp_paths = {
+            "normal": ["assets/islas/camp_normal.png"],
+            "fire":   ["assets/islas/camp_fire.png"],
+        }
+
+    elif FACTION == "fortalezas":
+        camp_paths = {
+            "fortaleza_dragon_normal": ["assets/fortalezas/fortaleza_dragon_normal.png"],
+            "fortaleza_dragon_fire":   ["assets/fortalezas/fortaleza_dragon_fire.png"],
+
+            "fortaleza_desierto_normal": ["assets/fortalezas/fortaleza_desierto_normal.png"],
+            "fortaleza_desierto_fire":   ["assets/fortalezas/fortaleza_desierto_fire.png"],
+
+            "fortaleza_barbaros_normal": ["assets/fortalezas/fortaleza_barbaros_normal.png"],
+            "fortaleza_barbaros_fire":   ["assets/fortalezas/fortaleza_barbaros_fire.png"],
+        }
+
+    else:
+        camp_paths = {}
+
+    # Cargar camp templates
     for label, paths in camp_paths.items():
         arr = []
         for p in paths:
@@ -87,14 +282,17 @@ def load_templates():
                 arr.append(img)
         templates[label] = arr
 
-    # Offer templates
-    offer_templates = {
-        "reward": safe_imread("assets/reward.png"),
-        "offer": safe_imread("assets/offer.png"),
-        "offer2": safe_imread("assets/offer2.png"),
-        "offer3": safe_imread("assets/offer3.png"),
-        "offer4": safe_imread("assets/offer4.png"),
+    # ---------- OFFERS / POPUPS (COMUNES A TODAS LAS FACCIONES) ----------
+    offer_paths = {
+        "reward": "assets/popups/reward.png",
+        "offer": "assets/popups/offer.png",
+        "offer2": "assets/popups/offer2.png",
+        "offer3": "assets/popups/offer3.png",
+        "offer4": "assets/popups/offer4.png",
     }
+
+    for key, path in offer_paths.items():
+        offer_templates[key] = safe_imread(path)
 
 def actualizar_combo_comandante(*args):
     try:
@@ -491,14 +689,21 @@ def attack_camp(camp: Detection):
         RUNNING = False
         return False
 
-    post_attack_steps = [
-        "assets/horse_type.png",
-        "assets/confirm_attack2.png"
-    ]
+    if horse_choice == "monedas" and "horse_monedas" in COORDS:
+        click_coord(COORDS["horse_monedas"])
+    elif horse_choice == "plumas" and "horse_plumas" in COORDS:
+        click_coord(COORDS["horse_plumas"])
+    else:
+        log("⚠️ No se encontró coordenada para el caballo elegido")
+        return False
+    time.sleep(0.4)
 
-    for step in post_attack_steps:
-        if not wait_and_click(step):
-            return False
+    # Confirmar ataque
+    if "confirm_attack2" in COORDS:
+        click_coord(COORDS["confirm_attack2"])
+        time.sleep(0.4)
+
+    log(f"✅ Ataque completado con caballo {horse_choice}")
 
     return True
 
@@ -523,6 +728,257 @@ def detect_fire_roi(camp: Detection) -> bool:
         if max_val >= THRESHOLD:
             return True
     return False
+
+# -------------------- Berimond --------------------
+def open_coord_config():
+    try:
+        subprocess.Popen([sys.executable, "coords_app.py"])
+    except Exception as e:
+        messagebox.showerror("Error", f"No se pudo abrir el configurador de coordenadas:\n{e}")
+
+with open(COORDS_FILE, "r") as f:
+    COORDS = json.load(f)
+
+def click_coord(coord: dict):
+    x, y = coord["x"], coord["y"]
+    pyautogui.moveTo(x, y, duration=0.05)
+    pyautogui.click()
+
+# Variable global para elección del caballo
+horse_choice = "monedas"  # por defecto
+
+def attack_berimond():
+    global horse_choice
+
+    # Click en campamento (centro de pantalla)
+    screen_width, screen_height = pyautogui.size()
+    pyautogui.moveTo(screen_width//2, screen_height//2, duration=0.05)
+    pyautogui.click()
+    time.sleep(0.2)
+
+    # Click en pre-attack steps (coordenadas fijas)
+    for step in ["attack_icon","confirm_attack", "template_button", "attack_button"]:
+        if step in COORDS:
+            click_coord(COORDS[step])
+            time.sleep(0.4)
+
+    # Detectar min_troops
+    if detect_popup("assets/min_troops.png", confidence=0.8, timeout=0.5):
+        log("❌ Error: No hay suficientes tropas para atacar")
+        # Cerrar errores por imagen
+        wait_and_click("assets/error_close.png")
+        wait_and_click("assets/exit2.png")
+        return False
+
+    # --- Selección del caballo según GUI ---
+    if horse_choice == "monedas" and "horse_monedas" in COORDS:
+        click_coord(COORDS["horse_monedas"])
+    elif horse_choice == "plumas" and "horse_plumas" in COORDS:
+        click_coord(COORDS["horse_plumas"])
+    else:
+        log("⚠️ No se encontró coordenada para el caballo elegido")
+        return False
+    time.sleep(0.4)
+
+    # Confirmar ataque
+    if "confirm_attack2" in COORDS:
+        click_coord(COORDS["confirm_attack2"])
+        time.sleep(0.4)
+
+    log(f"✅ Ataque completado con caballo {horse_choice}")
+    return True
+
+
+def launch_main_window_berimond():
+    global root, spin_comandantes, spin_timer, combo_comandante
+    global entry_delay, text_log, label_status, comandante_delays
+    global ATTACK_ACTIVE
+
+    if "comandante_delays" not in globals():
+        comandante_delays = {}
+
+    root = tk.Tk()
+    root.title("Bot Berimond")
+    
+     # --- Barra de menú ---
+    menu_bar = tk.Menu(root)
+    root.config(menu=menu_bar)
+
+    settings_menu = tk.Menu(menu_bar, tearoff=0)
+    menu_bar.add_cascade(label="Settings", menu=settings_menu)
+    settings_menu.add_command(label="Configurar coordenadas", command=coord_config_window)
+
+    
+    # --- Frame principal ---
+    frame = ttk.Frame(root, padding=10)
+    frame.grid(row=0, column=0, sticky="nw")
+
+    ttk.Label(frame, text="Comandantes:").grid(row=0, column=0, sticky="w")
+    spin_comandantes = tk.Spinbox(frame, from_=1, to=40, width=5)
+    spin_comandantes.grid(row=0, column=1, padx=5, pady=5)
+
+    ttk.Label(frame, text="Cooldown (s):").grid(row=1, column=0, sticky="w")
+    spin_timer = tk.Spinbox(frame, from_=5, to=600, width=5)
+    spin_timer.grid(row=1, column=1, padx=5, pady=5)
+
+    # --- Delay Frame ---
+    delays_frame = ttk.LabelFrame(root, text="Delay por Comandante", padding=10)
+    delays_frame.grid(row=0, column=1, padx=15, pady=10, sticky="n")
+
+    ttk.Label(delays_frame, text="Selecciona comandante:").grid(row=0, column=0, sticky="w")
+    combo_comandante = ttk.Combobox(delays_frame, state="readonly", width=18)
+    combo_comandante.grid(row=0, column=1, padx=5, pady=5)
+
+    ttk.Label(delays_frame, text="Delay (s):").grid(row=1, column=0, sticky="w")
+    entry_delay = ttk.Entry(delays_frame, width=6)
+    entry_delay.grid(row=1, column=1, padx=5, pady=5)
+
+    # --- Log ---
+    log_frame = ttk.Frame(root)
+    log_frame.grid(row=1, column=0, columnspan=2, padx=10, pady=10, sticky="nsew")
+    text_log = tk.Text(log_frame, height=20, width=80, state="normal")
+    text_log.grid(row=0, column=0, sticky="nsew")
+    scrollbar = ttk.Scrollbar(log_frame, orient="vertical", command=text_log.yview)
+    scrollbar.grid(row=0, column=1, sticky="ns")
+    text_log.config(yscrollcommand=scrollbar.set)
+    
+    # --- Selección de caballo ---
+    horse_frame = ttk.LabelFrame(root, text="Tipo de Caballo", padding=10)
+    horse_frame.grid(row=2, column=0, padx=10, pady=10, sticky="w")
+
+    horse_var = tk.StringVar(value="monedas")  # por defecto
+
+    rb_monedas = ttk.Radiobutton(horse_frame, text="Caballo Monedas", variable=horse_var, value="monedas",
+                             command=lambda: set_horse_choice(horse_var.get()))
+    rb_monedas.grid(row=0, column=0, padx=5, pady=5)
+
+    rb_plumas = ttk.Radiobutton(horse_frame, text="Caballo Plumas", variable=horse_var, value="plumas",
+                            command=lambda: set_horse_choice(horse_var.get()))
+    rb_plumas.grid(row=0, column=1, padx=5, pady=5)
+
+    def set_horse_choice(choice):
+        global horse_choice
+        horse_choice = choice
+        log(f"🐴 Seleccionado: Caballo {choice.capitalize()}")
+
+    def log_local(msg):
+        text_log.insert(tk.END, f"{msg}\n")
+        text_log.see(tk.END)
+        root.update_idletasks()
+        print(msg)
+
+    globals()['log'] = log_local
+
+    # --- Label de estado ---
+    label_status = ttk.Label(frame, text="", font=("Segoe UI", 12))
+    label_status.grid(row=0, column=2, padx=5)
+
+    # --- Funciones de actualización ---
+    def actualizar_combo_comandante(*args):
+        try:
+            n = int(spin_comandantes.get())
+        except:
+            n = 1
+        combo_comandante["values"] = [f"Comandante {i+1}" for i in range(n)]
+        if n > 0:
+            combo_comandante.current(0)
+            actualizar_entry_delay()
+
+    def actualizar_entry_delay(*args):
+        idx = combo_comandante.current()
+        if idx < 0:
+            entry_delay.delete(0, tk.END)
+            return
+        delay = comandante_delays.get(idx, 0.0)
+        entry_delay.delete(0, tk.END)
+        entry_delay.insert(0, str(delay))
+
+    def guardar_delay(*args):
+        idx = combo_comandante.current()
+        if idx < 0:
+            return
+        try:
+            comandante_delays[idx] = float(entry_delay.get())
+            log(f"⏱ Delay comandante {idx+1} actualizado a {comandante_delays[idx]}s")
+        except:
+            comandante_delays[idx] = 0.0
+            log(f"⚠️ Delay comandante {idx+1} no válido, reiniciado a 0.0s")
+
+    # --- Guardar y cargar config ---
+    def guardar_config():
+        guardar_delay()
+        config = {
+            "N_COMANDANTES": int(spin_comandantes.get()),
+            "TIMER": int(spin_timer.get()),
+            "comandante_delays": {str(k): v for k, v in comandante_delays.items()}
+        }
+        try:
+            with open(CONFIG_FILEB, "w", encoding="utf-8") as f:
+                json.dump(config, f, indent=4)
+            log(f"💾 Configuración guardada")
+        except Exception as e:
+            log(f"⚠️ Error guardando configuración: {e}")
+
+    def cargar_config():
+        if os.path.exists(CONFIG_FILEB):
+            try:
+                with open(CONFIG_FILEB, "r", encoding="utf-8") as f:
+                    config = json.load(f)
+            except Exception as e:
+                log(f"⚠️ No se pudo cargar {CONFIG_FILEB}: {e}")
+                return
+            spin_comandantes.delete(0, "end")
+            spin_comandantes.insert(0, config.get("N_COMANDANTES", 1))
+            spin_timer.delete(0, "end")
+            spin_timer.insert(0, config.get("TIMER", 10))
+            delays = config.get("comandante_delays", {})
+            for k, v in delays.items():
+                try:
+                    comandante_delays[int(k)] = float(v)
+                except:
+                    pass
+            actualizar_combo_comandante()
+            actualizar_entry_delay()
+            log("💾 Configuración cargada")
+
+    cargar_config()
+
+    # --- Bindings ---
+    spin_comandantes.config(command=lambda: [actualizar_combo_comandante(), guardar_config()])
+    combo_comandante.bind("<<ComboboxSelected>>", actualizar_entry_delay)
+    entry_delay.bind("<FocusOut>", lambda e: [guardar_delay(), guardar_config()])
+    spin_timer.config(command=guardar_config)
+
+    # --- Botones iniciar/detener ---
+    def start_attacks():
+        global ATTACK_ACTIVE
+        if ATTACK_ACTIVE:
+            return
+        ATTACK_ACTIVE = True
+        threading.Thread(target=attack_loop, daemon=True).start()
+        log("▶️ Ataques iniciados")
+
+    def stop_attacks():
+        global ATTACK_ACTIVE
+        ATTACK_ACTIVE = False
+        log("⏹ Ataques detenidos")
+
+    def attack_loop():
+        while ATTACK_ACTIVE:
+            attack_berimond()
+
+    ttk.Button(frame, text="Iniciar", command=start_attacks).grid(row=2, column=0, pady=5)
+    ttk.Button(frame, text="Detener", command=stop_attacks).grid(row=2, column=1, pady=5)
+
+    # --- Guardar al cerrar ---
+    def on_close():
+        guardar_config()
+        global ATTACK_ACTIVE
+        ATTACK_ACTIVE = False
+        root.destroy()
+
+    root.protocol("WM_DELETE_WINDOW", on_close)
+    root.mainloop()
 
 # -------------------- UI: main window --------------------
 global ultimo_log_ciclos
@@ -589,6 +1045,24 @@ def launch_main_window():
     ttk.Label(delays_frame, text="Delay (s):").grid(row=1, column=0, sticky="w")
     entry_delay = ttk.Entry(delays_frame, width=6)
     entry_delay.grid(row=1, column=1, padx=5, pady=5)
+    # --- Selección de caballo ---
+    horse_frame = ttk.LabelFrame(root, text="Tipo de Caballo", padding=10)
+    horse_frame.grid(row=2, column=0, padx=10, pady=10, sticky="w")
+
+    horse_var = tk.StringVar(value="monedas")  # por defecto
+
+    rb_monedas = ttk.Radiobutton(horse_frame, text="Caballo Monedas", variable=horse_var, value="monedas",
+                             command=lambda: set_horse_choice(horse_var.get()))
+    rb_monedas.grid(row=0, column=0, padx=5, pady=5)
+
+    rb_plumas = ttk.Radiobutton(horse_frame, text="Caballo Plumas", variable=horse_var, value="plumas",
+                            command=lambda: set_horse_choice(horse_var.get()))
+    rb_plumas.grid(row=0, column=1, padx=5, pady=5)
+
+    def set_horse_choice(choice):
+        global horse_choice
+        horse_choice = choice
+        log(f"🐴 Seleccionado: Caballo {choice.capitalize()}")
 
     def guardar_delay(*args):
         idx = combo_comandante.current()
@@ -804,31 +1278,6 @@ def launch_main_window():
 
     root.mainloop()
 
-# -------------------- Seleccionador de Facciones --------------------
-def choose_faction_window():
-    def select_nomadas():
-        global FACTION
-        FACTION = "nomadas"
-        w.destroy()
-        launch_main_window()
-
-    def select_samurais():
-        global FACTION
-        FACTION = "samurais"
-        w.destroy()
-        launch_main_window()
-
-    w = tk.Tk()
-    w.title("Selecciona Facción")
-    ttk.Label(w, text="Selecciona tu facción:", font=("Segoe UI", 14)).pack(pady=20)
-    frame_buttons = ttk.Frame(w)
-    frame_buttons.pack(pady=10)
-    btn_nomadas = ttk.Button(frame_buttons, text="Nómadas", command=select_nomadas, width=20)
-    btn_nomadas.grid(row=0, column=0, padx=10)
-    btn_samurais = ttk.Button(frame_buttons, text="Samuráis", command=select_samurais, width=20)
-    btn_samurais.grid(row=0, column=1, padx=10)
-    w.mainloop()
-
 # ---------- Watchers ----------
 last_click_time = {}
 COOLDOWN = 1  # segundo
@@ -884,10 +1333,7 @@ def end_cooldown(camp_id):
     COOLDOWN_LOCKS[camp_id] = False
 
 def watcher_fire_fast():
-    """
-    Watcher optimizado que solo monitorea el campamento seleccionado.
-    Detecta fuego y llama a cool_down_camp por cada comandante disponible.
-    """
+
     global camps_detected, WATCHER_ACTIVE, POPUP_ACTIVE, last_popup_time
 
     if not camps_detected:
@@ -996,6 +1442,77 @@ def ciclo_ataques(target: Detection, ciclos_max):
 
     RUNNING = False
     log("⏹ Todos los ciclos completados o se detuvo la ejecución")
+
+
+# -------------------- Seleccionador de Facciones --------------------
+def choose_faction_window():
+    def select_faction(name):
+        global FACTION
+        FACTION = name
+        w.destroy()
+        load_templates()
+        if name in ["nomadas", "samurais"]:
+            launch_main_window()  # GUI original
+        elif name == "berimond":
+            launch_main_window_berimond()  # Nueva GUI para Berimond
+        else:
+            messagebox.showinfo("Info", f"La facción/evento '{name}' aún no tiene GUI implementada")
+
+    def open_settings():
+        settings_win = tk.Toplevel(w)   # ✅ ventana secundaria
+        settings_win.title("Settings")
+        settings_win.geometry("300x200")
+
+        ttk.Label(settings_win, text="Configuración avanzada", font=("Segoe UI", 12)).pack(pady=10)
+
+        def launch_coords_app():
+            try:
+                import subprocess, sys
+                subprocess.Popen([sys.executable, "coords_app.py"])
+            except Exception as e:
+                messagebox.showerror("Error", f"No se pudo abrir coords_app.py:\n{e}")
+
+        ttk.Button(settings_win, text="Abrir Configuración de Coordenadas", command=launch_coords_app).pack(pady=20)
+
+    # ✅ ventana raíz
+    w = tk.Tk()
+    w.title("Seleccionador de Eventos")
+
+    ttk.Label(w, text="Selecciona el evento o NPC:", font=("Segoe UI", 14)).pack(pady=20)
+
+    frame_buttons = ttk.Frame(w)
+    frame_buttons.pack(pady=10)
+
+    # Cargar iconos (64x64)
+    icons = {
+        "nomadas": ImageTk.PhotoImage(Image.open("assets/icons/nomadas.png").resize((64, 64))),
+        "samurais": ImageTk.PhotoImage(Image.open("assets/icons/samurais.png").resize((64, 64))),
+        "berimond": ImageTk.PhotoImage(Image.open("assets/icons/berimond.png").resize((64, 64))),
+        "islas": ImageTk.PhotoImage(Image.open("assets/icons/islas.png").resize((64, 64))),
+        "fortalezas": ImageTk.PhotoImage(Image.open("assets/icons/fortalezas.png").resize((64, 64))),
+    }
+
+    # Botones de facciones
+    row, col = 0, 0
+    for name, label in [
+        ("nomadas", "Nómadas"),
+        ("samurais", "Samuráis"),
+        ("berimond", "Berimond"),
+        ("islas", "Islas"),
+        ("fortalezas", "Fortalezas")
+    ]:
+        btn = tk.Button(frame_buttons, text=label, image=icons[name],
+                        compound="top", command=lambda n=name: select_faction(n))
+        btn.grid(row=row, column=col, padx=15, pady=10)
+        col += 1
+        if col > 2:
+            col = 0
+            row += 1
+
+
+
+    w.mainloop()
+
 
 # ---------- Start ----------
 if __name__ == "__main__":
