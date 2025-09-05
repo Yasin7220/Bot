@@ -159,6 +159,12 @@ TEMPLATE_PATHS = {
     "confirm_attack2": "assets/attack/confirm_attack2.png",
     "confirm_attack": "assets/attack/confirm_attack.png",
     "template_button": "assets/attack/template_button.png",
+    "reduce_icon": "assets/cooldown/reduce_icon.png",
+    "clock_1h": "assets/cooldown/clock_1h.png",
+    "arrow_left" :"assets/cooldown/arrow_left.png",
+    "clock_30": "assets/cooldown/clock_30m.png",
+    "clock_1h_bonus": "assets/cooldown/clock_1h_bonus.png",
+    "clock_30m_bonus": "assets/cooldown/clock_30m_bonus.png"
 }
 
 OUTPUT_JSON = "berimond_ui_coords.json"
@@ -754,6 +760,22 @@ def start_cooldown(camp_id):
 def end_cooldown(camp_id):
     COOLDOWN_LOCKS[camp_id] = False
 
+def click_coord_center(name, offset_x=0, offset_y=0):
+    if name not in COORDS:
+        log(f"⚠️ Coordenadas no encontradas para {name}")
+        return False
+
+    coord = COORDS[name]
+
+    # Cálculo del centro real con float para evitar errores por división entera
+    cx = coord['x'] + coord['w'] / 2 + offset_x
+    cy = coord['y'] + coord['h'] / 2 + offset_y
+
+    pyautogui.moveTo(cx, cy, duration=0.1)
+    pyautogui.click()
+    log(f"🖱 Click en {name} -> {{'x': {cx}, 'y': {cy}, 'w': {coord['w']}, 'h': {coord['h']}}}")
+    return True
+
 
 # -------------------- Cooldown camp --------------------
 def cool_down_camp(camp: Detection, comandante: int):
@@ -766,20 +788,25 @@ def cool_down_camp(camp: Detection, comandante: int):
     log(f"🔒 Lock activado para campamento ({camp.x},{camp.y})")
 
     try:
+        # Esperar que no haya popups activos al iniciar
         while POPUP_ACTIVE:
             log("⏳ Esperando que el popup se cierre antes de enfriar el campamento")
             time.sleep(0.5)
 
         log(f"👉 Enfriando campamento en llamas ({camp.x},{camp.y})")
 
+        # Click en el campamento
         cx, cy = camp.x + camp.w // 2, camp.y + camp.h // 2
         pyautogui.moveTo(cx, cy, duration=0.2)
         pyautogui.click()
         time.sleep(0.6)
 
+        # Click en attack_icon si existe
         if "attack_icon" in COORDS:
-            click_coord(COORDS["attack_icon"])
+            click_coord_center("attack_icon")
+            time.sleep(0.4)
 
+        # Leer relojes disponibles
         try:
             relojes_30 = int(spin_30min.get())
         except:
@@ -789,21 +816,23 @@ def cool_down_camp(camp: Detection, comandante: int):
         except:
             relojes_1h = 0
         log(f"📦 Relojes disponibles: {relojes_30} de 30m, {relojes_1h} de 1h")
+        time.sleep(0.2)
 
+        # Configurar pasos según BONUS
         steps = []
         if BONUS_ACTIVO:
             if relojes_30 >= 2:
                 steps = [
-                    ("assets/cooldown/reduce_icon.png", {}),
-                    ("assets/cooldown/clock_30m.png", {"offset_x": 100}),
-                    ("assets/cooldown/clock_30m.png", {"offset_x": 100}),
-                    ("assets/cooldown/exit.png", {}),
+                    ("reduce_icon", {"sleep":0.5}),
+                    ("clock_30m_bonus", {"offset_x":100, "sleep":0.3}),
+                    ("clock_30m_bonus", {"offset_x":100, "sleep":0.3}),
+                    ("exit", {"template": True, "sleep":0.3}),
                 ]
             elif relojes_1h >= 1:
                 steps = [
-                    ("assets/cooldown/reduce_icon.png", {}),
-                    ("assets/cooldown/clock_1h.png", {"offset_x": 100}),
-                    ("assets/cooldown/exit.png", {}),
+                    ("reduce_icon", {"sleep":0.5}),
+                    ("clock_1h_bonus", {"offset_x":100, "sleep":0.3}),
+                    ("exit", {"template": True, "sleep":0.3}),
                 ]
             else:
                 log("❌ Sin relojes suficientes")
@@ -811,11 +840,11 @@ def cool_down_camp(camp: Detection, comandante: int):
         else:
             if relojes_30 >= 1 and relojes_1h >= 1:
                 steps = [
-                    ("assets/cooldown/reduce_icon.png", {}),
-                    ("assets/cooldown/clock_1h.png", {"offset_x": 100}),
-                    ("assets/cooldown/arrow_left.png", {}),
-                    ("assets/cooldown/clock_30m.png", {"offset_x": 100}),
-                    ("assets/cooldown/exit.png", {}),
+                    ("reduce_icon", {"sleep":0.5}),
+                    ("clock_1h", {"offset_x":100, "sleep":0.3}),
+                    ("arrow_left", {"sleep":0.3}),
+                    ("clock_30m", {"offset_x":100, "sleep":0.3}),
+                    ("exit", {"template": True, "sleep":0.3}),
                 ]
             else:
                 log("❌ Sin relojes suficientes")
@@ -824,31 +853,66 @@ def cool_down_camp(camp: Detection, comandante: int):
         usados_30 = 0
         usados_1h = 0
 
-        for img, opts in steps:
+        popup_files = [
+            "assets/popups/reward.png",
+            "assets/popups/offer.png",
+            "assets/popups/offer2.png",
+            "assets/popups/offer3.png",
+        ]
+
+        # Ejecutar pasos
+        for name, opts in steps:
             for attempt in range(3):
                 while POPUP_ACTIVE:
                     log("⚠️ Popup detectado durante la secuencia, pausando...")
                     time.sleep(0.3)
-                log(f"🔍 Buscando {img} (intento {attempt+1})...")
-                if wait_and_click(img, confidence=0.75, timeout=3, offset_x=opts.get("offset_x", 0)):
-                    log(f"✅ Click en {img}")
-                    time.sleep(0.4)
 
-                    if "clock_30m.png" in img:
+                log(f"🔍 Click en {name} (intento {attempt+1})...")
+
+                if opts.get("template"):  # exit con wait_and_click
+                    success = wait_and_click(f"assets/cooldown/{name}.png", confidence=0.75, timeout=3)
+                    time.sleep(opts.get("sleep",0.3))
+
+                    if success and name == "exit":
+                        # Doble validación de popup tras click en exit
+                        for retry in range(5):
+                            popup_closed = False
+                            for pp in popup_files:
+                                if detect_popup(pp, confidence=0.8, timeout=0.2):
+                                    log("⚠️ Popup apareció tras clicar exit, cerrando...")
+                                    wait_and_click(pp, confidence=0.8, timeout=1)
+                                    popup_closed = True
+                                    time.sleep(0.3)
+                                    break
+                            if popup_closed:
+                                log("🔁 Reintentando exit...")
+                                wait_and_click(f"assets/cooldown/{name}.png", confidence=0.75, timeout=2)
+                                time.sleep(0.3)
+                            else:
+                                if not detect_on_screen(name):
+                                    break
+                else:
+                    success = click_coord_center(name, offset_x=opts.get("offset_x",0))
+                    time.sleep(opts.get("sleep",0.3))
+
+                if success:
+                    if "clock_30m" in name:
                         usados_30 += 1
-                    elif "clock_1h.png" in img:
+                    elif "clock_1h" in name:
                         usados_1h += 1
+
+                    log(f"✅ Click en {name}")
                     break
                 else:
-                    log(f"⚠️ No se pudo clicar {img} en el intento {attempt+1}")
+                    log(f"⚠️ No se pudo clicar {name} en el intento {attempt+1}")
                     time.sleep(0.4)
             else:
-                log(f"❌ Falló la secuencia en {img}, abortando")
+                log(f"❌ Falló la secuencia en {name}, abortando")
                 return False
 
+        # Actualizar contadores
         relojes_30 = max(0, relojes_30 - usados_30)
         relojes_1h = max(0, relojes_1h - usados_1h)
-
         spin_30min.delete(0, "end")
         spin_30min.insert(0, str(relojes_30))
         spin_1h.delete(0, "end")
@@ -862,6 +926,8 @@ def cool_down_camp(camp: Detection, comandante: int):
 
     finally:
         end_cooldown(camp_id)
+
+
 
 def attack_camp(camp: Detection):
     cx, cy = camp.x + camp.w // 2, camp.y + camp.h // 2
@@ -939,7 +1005,6 @@ def detect_fire_roi(camp: Detection, confirm_frames: int = 3) -> bool:
         time.sleep(0.05)  # pequeña pausa entre frames
 
     return fire_count >= (confirm_frames // 2 + 1)  # mayoría de frames
-
 
 # -------------------- Berimond --------------------
 
