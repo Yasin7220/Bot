@@ -15,7 +15,7 @@ import shutil
 # ---------- Config ----------
 FACTION: Optional[str] = None
 
-THRESHOLD = 0.8
+THRESHOLD = 0.9
 SCALES = np.linspace(0.6, 1.4, 11)
 IOU_NMS = 0.35
 SAVE_DEBUG = "last_detection.png"
@@ -49,7 +49,7 @@ camps_detected: List[Detection] = []
 templates = {}
 offer_templates = {}
 comandante_delays = {}
-
+horse_choice = "monedas"  # por defecto
 # GUI references
 root = None
 combo_camps = None
@@ -61,6 +61,96 @@ text_log = None
 label_status = None
 
 # ---------- Config ----------
+TROOP_IMAGES = {
+    "Valquiria de asalto": "assets/recruit/valkyrie_ranger.png",
+    "Valquiria ballestera": "assets/recruit/valkyrie_sniper.png",
+    "Doncella con escudo": "assets/recruit/shield_maiden.png",
+    "Protectora del norte": "assets/recruit/protector_of_the_north.png",
+    "Arquero de arco largo reliquia": "assets/recruit/relic_longbowman.png",
+    "Soldado con martillo reliquia": "assets/recruit/relic_hammerman.png",
+    "Arquero reliquia": "assets/recruit/relic_shortbowman.png",
+    "Hachero reliquia": "assets/recruit/relic_axeman.png",
+    "Alabardero veterano": "assets/recruit/veteran_halberdier.png",
+    "Espadachin con mandoble veterano": "assets/recruit/veteran_two_handed_swordsman.png",
+    "Arquero de arco largo veterano": "assets/recruit/veteran_longbowman.png",
+    "Ballestero fuerte veterano": "assets/recruit/veteran_heavy_crossbowman.png",
+    "Espadachín veterano": "assets/recruit/veteran_swordsman.png",
+    "Soldado Arquero": "assets/recruit/archer.png",
+    "Ballestero veterano": "assets/recruit/veteran_crossbowman.png",
+    "Arquero veterano": "assets/recruit/veteran_bowman.png",
+    "Guerrero con maza veterano": "assets/recruit/veteran_maceman.png",
+    "Piquero veterano": "assets/recruit/veteran_spearman.png",
+    "Auxiliar A": "assets/recruit/auxiliar_melee.png",
+    "Auxiliar B": "assets/recruit/auxiliar_ranged.png",
+}
+TROOP_IMAGES_ORIGINAL = {
+    "Valquiria de asalto": "assets/recruit/originals/valkyrie_rangerO.png",
+    "Valquiria ballestera": "assets/recruit/originals/valkyrie_sniperO.png",
+    "Doncella con escudo": "assets/recruit/originals/shield_maidenO.png",
+    "Protectora del norte": "assets/recruit/originals/protector_of_the_northO.png",
+    "Arquero de arco largo reliquia": "assets/recruit/originals/relic_longbowmanO.png",
+    "Soldado con martillo reliquia": "assets/recruit/originals/relic_hammermanO.png",
+    "Arquero reliquia": "assets/recruit/originals/relic_shortbowmanO.png",
+    "Hachero reliquia": "assets/recruit/originals/relic_axemanO.png",
+    "Alabardero veterano": "assets/recruit/originals/veteran_halberdierO.png",
+    "Espadachin con mandoble veterano": "assets/recruit/originals/veteran_two_handed_swordsmanO.png",
+    "Arquero de arco largo veterano": "assets/recruit/originals/veteran_longbowmanO.png",
+    "Ballestero fuerte veterano": "assets/recruit/originals/veteran_heavy_crossbowmanO.png",
+    "Espadachín veterano": "assets/recruit/originals/veteran_swordsmanO.png",
+    "Soldado Arquero": "assets/recruit/originals/archerO.png",
+    "Ballestero veterano": "assets/recruit/originals/veteran_crossbowmanO.png",
+    "Arquero veterano": "assets/recruit/originals/veteran_bowmanO.png",
+    "Guerrero con maza veterano": "assets/recruit/originals/veteran_macemanO.png",
+    "Piquero veterano": "assets/recruit/originals/veteran_spearmanO.png",
+    "Auxiliar A": "assets/recruit/originals/auxiliar_meleeO.png",
+    "Auxiliar B": "assets/recruit/originals/auxiliar_rangedO.png"
+}
+TROOP_TYPES = {
+    "Valquiria de asalto": "distancia",
+    "Valquiria ballestera": "distancia",
+    "Doncella con escudo": "cuerpo",
+    "Protectora del norte": "cuerpo",
+    "Arquero de arco largo reliquia": "distancia",
+    "Soldado con martillo reliquia": "cuerpo",
+    "Arquero reliquia": "distancia",
+    "Hachero reliquia": "cuerpo",
+    "Alabardero veterano": "cuerpo",
+    "Espadachin con mandoble veterano": "cuerpo",
+    "Arquero de arco largo veterano": "distancia",
+    "Ballestero fuerte veterano": "distancia",
+    "Espadachín veterano": "cuerpo",
+    "Soldado Arquero": "distancia",
+    "Ballestero veterano": "distancia",
+    "Arquero veterano": "distancia",
+    "Guerrero con maza veterano": "cuerpo",
+    "Piquero veterano": "cuerpo",
+    "Auxiliar A": "cuerpo",
+    "Auxiliar B": "distancia"
+}
+
+FILE_TO_TROOP = {
+    "valkyrie_ranger": "Valquiria de asalto",
+    "valkyrie_sniper": "Valquiria ballestera",
+    "shield_maiden": "Doncella con escudo",
+    "protector_of_the_north": "Protectora del norte",
+    "relic_longbowman": "Arquero de arco largo reliquia",
+    "relic_hammerman": "Soldado con martillo reliquia",
+    "relic_shortbowman": "Arquero reliquia",
+    "relic_axeman": "Hachero reliquia",
+    "veteran_halberdier": "Alabardero veterano",
+    "veteran_two_handed_swordsman": "Espadachin con mandoble veterano",
+    "veteran_longbowman": "Arquero de arco largo veterano",
+    "veteran_heavy_crossbowman": "Ballestero fuerte veterano",
+    "veteran_swordsman": "Espadachín veterano",
+    "archer": "Soldado Arquero",
+    "veteran_crossbowman": "Ballestero veterano",
+    "veteran_bowman": "Arquero veterano",
+    "veteran_maceman": "Guerrero con maza veterano",
+    "veteran_spearman": "Piquero veterano",
+    "auxiliar_melee": "Auxiliar A",
+    "auxiliar_ranged": "Auxiliar B"
+}
+
 TEMPLATE_PATHS = {
     "attack_button": "assets/attack/attack_button.png",
     "attack_icon": "assets/attack/attack_icon.png",
@@ -73,6 +163,7 @@ TEMPLATE_PATHS = {
 
 OUTPUT_JSON = "berimond_ui_coords.json"
 CAPTURE_DIR = "capturas"
+CAPTURE_DIR_R = "capturas_reclutamiento"
 
 os.makedirs(CAPTURE_DIR, exist_ok=True)
 
@@ -83,6 +174,9 @@ class Coord:
     w: int
     h: int
 
+with open(COORDS_FILE, "r") as f:
+    COORDS = json.load(f)
+    
 # ---------- Cargar coordenadas previas ----------
 if os.path.exists(OUTPUT_JSON):
     try:
@@ -114,9 +208,9 @@ def detect_on_screen(template_path, confidence=THRESHOLD):
     if max_val >= confidence:
         h, w = template.shape
         x, y = max_loc
-        # Dibujar recuadro verde en la captura
+
         cv2.rectangle(screen_rgb, (x, y), (x + w, y + h), (0, 255, 0), 2)
-        # Guardar la captura
+
         cv2.imwrite(
             os.path.join(CAPTURE_DIR, f"{os.path.basename(template_path).split('.')[0]}.png"),
             cv2.cvtColor(screen_rgb, cv2.COLOR_RGB2BGR),
@@ -160,7 +254,6 @@ def add_template():
     for filepath in filepaths:
         name = os.path.splitext(os.path.basename(filepath))[0]
 
-        # Solo permitir nombres que ya existan en TEMPLATE_PATHS
         if name not in TEMPLATE_PATHS:
             messagebox.showwarning(
                 "Nombre no permitido",
@@ -197,6 +290,53 @@ def add_template():
     # Reubicar botones fijos
     add_btn.grid(row=len(btns), column=0, pady=10)
     save_btn.grid(row=len(btns)+1, column=0, pady=10)
+    
+def add_troop_images():
+    """Permite al usuario añadir imágenes recortadas para TROOP_IMAGES usando nombres de archivo en inglés"""
+    filepaths = filedialog.askopenfilenames(
+        title="Seleccionar imágenes recortadas",
+        filetypes=[("Imágenes", "*.png *.jpg *.jpeg")]
+    )
+    if not filepaths:
+        return
+
+    added_count = 0
+
+    for filepath in filepaths:
+        filename = os.path.basename(filepath)
+        name_no_ext = os.path.splitext(filename)[0]
+
+        # Traducir nombre de archivo a nombre de tropa en español
+        if name_no_ext in FILE_TO_TROOP:
+            troop_name = FILE_TO_TROOP[name_no_ext]
+        else:
+            messagebox.showwarning(
+                "Nombre no permitido",
+                f"❌ La tropa '{name_no_ext}' no está registrada en TROOP_IMAGES. No se añadirá."
+            )
+            continue
+
+        # Destino dentro de la carpeta recruit
+        dest_path = os.path.join("assets/recruit", filename)
+
+        try:
+            shutil.copy(filepath, dest_path)
+        except Exception as e:
+            messagebox.showerror(
+                "Error al copiar",
+                f"No se pudo copiar {filepath} -> {dest_path}\n{e}"
+            )
+            continue
+
+        # Actualiza la ruta de la tropa recortada en TROOP_IMAGES
+        TROOP_IMAGES[troop_name] = dest_path
+        added_count += 1
+
+    messagebox.showinfo(
+        "Actualización completada",
+        f"✅ Se actualizaron {added_count} imágenes recortadas para las tropas."
+    )
+
 # ---------- Main ----------
 def coord_config_window():
     global coords, TEMPLATE_PATHS, btns, frame, add_btn, save_btn
@@ -227,6 +367,34 @@ def safe_imread(path: str):
         print(f"⚠️ No se pudo leer la imagen: {path}")
     return img
 
+# ---------- Config dinámico de templates ----------
+TEMPLATE_PATHS_BY_FACTION = {
+    "nomadas": {
+        "camp_normal": "assets/nomadas/camp_normal.png",
+        "camp_fire": "assets/nomadas/camp_fire.png",
+    },
+    "samurais": {
+        "samurai": "assets/samurais/samurai.png",
+        "samurai defeated": "assets/samurais/samurai_defeated.png",
+    },
+    "berimond": {
+        "destroyed_watchtower": "assets/berimond/watchtower_in_fire.png",
+    },
+    "islas": {
+        "camp_normal": "assets/islas/camp_normal.png",
+        "camp_fire": "assets/islas/camp_fire.png",
+    },
+    "fortalezas": {
+        "fortaleza_dragon_normal": "assets/fortalezas/fortaleza_dragon_normal.png",
+        "fortaleza_dragon_fire": "assets/fortalezas/fortaleza_dragon_fire.png",
+        "fortaleza_desierto_normal": "assets/fortalezas/fortaleza_desierto_normal.png",
+        "fortaleza_desierto_fire": "assets/fortalezas/fortaleza_desierto_fire.png",
+        "fortaleza_barbaros_normal": "assets/fortalezas/fortaleza_barbaros_normal.png",
+        "fortaleza_barbaros_fire": "assets/fortalezas/fortaleza_barbaros_fire.png",
+    }
+}
+
+# ---------- Cargar templates dinámicamente ----------
 def load_templates():
     global templates, offer_templates
 
@@ -236,14 +404,14 @@ def load_templates():
     # ---------- CAMPAMENTOS POR FACCION ----------
     if FACTION == "nomadas":
         camp_paths = {
-            "normal": ["assets/nomadas/camp_normal.png"],
-            "fire":   ["assets/nomadas/camp_fire.png"],
+            "normal": ["assets/eventos/nomadas/camp_normal.png"],
+            "fire":   ["assets/eventos/nomadas/camp_fire.png"],
         }
 
     elif FACTION == "samurais":
         camp_paths = {
-            "normal": ["assets/samurais/camp_normal.png"],
-            "fire":   ["assets/samurais/camp_fire.png"],
+            "normal": ["assets/eventos/samurais/camp_normal.png"],
+            "fire":   ["assets/eventos/samurais/camp_fire.png"],
         }
 
     elif FACTION == "berimond":
@@ -293,6 +461,40 @@ def load_templates():
 
     for key, path in offer_paths.items():
         offer_templates[key] = safe_imread(path)
+
+
+# ---------- Ventana de configuración de imágenes ----------
+def open_image_config_window():
+    global TEMPLATE_PATHS_BY_FACTION
+
+    window = tk.Toplevel()
+    window.title("Subir imágenes para la facción")
+
+    frame = ttk.Frame(window, padding=10)
+    frame.grid(row=0, column=0)
+
+    row = 0
+    for key, path in TEMPLATE_PATHS_BY_FACTION[FACTION].items():
+        ttk.Label(frame, text=key).grid(row=row, column=0, sticky="w", padx=5, pady=5)
+
+        def upload_file(k=key, p=path):
+            file_path = filedialog.askopenfilename(
+                title=f"Seleccionar imagen para {k}",
+                filetypes=[("PNG/JPG", "*.png *.jpg *.jpeg")]
+            )
+            if file_path:
+                try:
+                    # Sobrescribir la imagen en la ruta fija
+                    shutil.copyfile(file_path, p)
+                    log(f"📌 Imagen '{k}' guardada en {p}")
+                    load_templates()  # recargar templates en memoria
+                except Exception as e:
+                    log(f"⚠️ No se pudo guardar '{k}': {e}")
+
+        ttk.Button(frame, text="Subir imagen", command=upload_file).grid(row=row, column=1, padx=5, pady=5)
+        row += 1
+
+    ttk.Button(frame, text="Cerrar", command=window.destroy).grid(row=row, column=0, columnspan=2, pady=10)
 
 def actualizar_combo_comandante(*args):
     try:
@@ -566,15 +768,8 @@ def cool_down_camp(camp: Detection, comandante: int):
         pyautogui.click()
         time.sleep(0.6)
 
-        for attempt in range(3):
-            if wait_and_click("assets/attack_icon.png", confidence=0.8, timeout=0.25):
-                log("✅ Se encontró y clicó el botón de ataque")
-                break
-            log(f"⚠️ Intento {attempt+1}: botón de ataque no encontrado")
-            time.sleep(0.6)
-        else:
-            log("❌ No se pudo abrir el menú de ataque")
-            return False
+        if "attack_icon" in COORDS:
+            click_coord(COORDS["attack_icon"])
 
         try:
             relojes_30 = int(spin_30min.get())
@@ -590,16 +785,16 @@ def cool_down_camp(camp: Detection, comandante: int):
         if BONUS_ACTIVO:
             if relojes_30 >= 2:
                 steps = [
-                    ("assets/reduce_icon.png", {}),
-                    ("assets/clock_30m.png", {"offset_x": 100}),
-                    ("assets/clock_30m.png", {"offset_x": 100}),
-                    ("assets/exit.png", {}),
+                    ("assets/cooldown/reduce_icon.png", {}),
+                    ("assets/cooldown/clock_30m.png", {"offset_x": 100}),
+                    ("assets/cooldown/clock_30m.png", {"offset_x": 100}),
+                    ("assets/cooldown/exit.png", {}),
                 ]
             elif relojes_1h >= 1:
                 steps = [
-                    ("assets/reduce_icon.png", {}),
-                    ("assets/clock_1h.png", {"offset_x": 100}),
-                    ("assets/exit.png", {}),
+                    ("assets/cooldown/reduce_icon.png", {}),
+                    ("assets/cooldown/clock_1h.png", {"offset_x": 100}),
+                    ("assets/cooldown/exit.png", {}),
                 ]
             else:
                 log("❌ Sin relojes suficientes")
@@ -607,11 +802,11 @@ def cool_down_camp(camp: Detection, comandante: int):
         else:
             if relojes_30 >= 1 and relojes_1h >= 1:
                 steps = [
-                    ("assets/reduce_icon.png", {}),
-                    ("assets/clock_1h.png", {"offset_x": 100}),
-                    ("assets/arrow_left.png", {}),
-                    ("assets/clock_30m.png", {"offset_x": 100}),
-                    ("assets/exit.png", {}),
+                    ("assets/cooldown/reduce_icon.png", {}),
+                    ("assets/cooldown/clock_1h.png", {"offset_x": 100}),
+                    ("assets/cooldown/arrow_left.png", {}),
+                    ("assets/cooldown/clock_30m.png", {"offset_x": 100}),
+                    ("assets/cooldown/exit.png", {}),
                 ]
             else:
                 log("❌ Sin relojes suficientes")
@@ -665,87 +860,162 @@ def attack_camp(camp: Detection):
     pyautogui.click()
     time.sleep(0.25)
 
-    if not safe_attack_click(): 
-        return False
+    if "attack_icon" in COORDS:
+        click_coord(COORDS["attack_icon"])
+    time.sleep(0.5)
+    
+    if "confirm_attack" in COORDS:
+        click_coord(COORDS["confirm_attack"])
+    time.sleep(0.5)
+    
+    if "template_button" in COORDS:
+        click_coord(COORDS["template_button"])
 
-    pre_attack_steps = [
-        "assets/confirm_attack.png",
-        "assets/template_button.png"
-    ]
-
-    for step in pre_attack_steps:
-        if not wait_and_click(step):
-            return False
-
-    if not wait_and_click("assets/attack_button.png"):
+    if not wait_and_click("assets/attack/attack_button.png"):
         return False
     time.sleep(0.4)
 
-    if detect_popup("assets/min_troops.png", confidence=0.8, timeout=0.5):
+    if detect_popup("assets/attack/min_troops.png", confidence=0.8, timeout=0.5):
         log("❌ Error: No hay suficientes tropas para atacar")
-        wait_and_click("assets/error_close.png")
-        wait_and_click("assets/exit2.png")
+        wait_and_click("assets/attack/error_close.png")
+        wait_and_click("assets/attack/exit2.png")
         global RUNNING
         RUNNING = False
         return False
 
-    if horse_choice == "monedas" and "horse_monedas" in COORDS:
-        click_coord(COORDS["horse_monedas"])
-    elif horse_choice == "plumas" and "horse_plumas" in COORDS:
-        click_coord(COORDS["horse_plumas"])
+    if horse_choice == "monedas" and "horse_gold_coins" in COORDS:
+        click_coord(COORDS["horse_gold_coins"])
+    elif horse_choice == "plumas" and "horse_premium" in COORDS:
+        click_coord(COORDS["horse_premium"])
     else:
         log("⚠️ No se encontró coordenada para el caballo elegido")
         return False
-    time.sleep(0.4)
+    time.sleep(0.1)
 
     # Confirmar ataque
     if "confirm_attack2" in COORDS:
         click_coord(COORDS["confirm_attack2"])
-        time.sleep(0.4)
+        time.sleep(0.01)
 
     log(f"✅ Ataque completado con caballo {horse_choice}")
 
     return True
 
-def detect_fire_roi(camp: Detection) -> bool:
+def detect_fire_roi(camp: Detection, confirm_frames: int = 3) -> bool:
     x, y, w, h = camp.x, camp.y, camp.w, camp.h
     margin = 6
     rx = max(0, x - margin)
     ry = max(0, y - margin)
     rw = max(1, w + margin * 2)
     rh = max(1, h + margin * 2)
-    try:
-        screenshot = pyautogui.screenshot(region=(rx, ry, rw, rh))
-    except Exception:
-        screenshot = pyautogui.screenshot()
-    gray = cv2.cvtColor(np.array(screenshot), cv2.COLOR_RGB2GRAY)
 
-    for templ in templates.get("fire", []):
-        if templ is None:
-            continue
-        res = cv2.matchTemplate(gray, templ, cv2.TM_CCOEFF_NORMED)
-        _, max_val, _, _ = cv2.minMaxLoc(res)
-        if max_val >= THRESHOLD:
-            return True
-    return False
+    fire_count = 0
+    for _ in range(confirm_frames):
+        try:
+            screenshot = pyautogui.screenshot(region=(rx, ry, rw, rh))
+        except Exception:
+            screenshot = pyautogui.screenshot()
+
+        gray = cv2.cvtColor(np.array(screenshot), cv2.COLOR_RGB2GRAY)
+
+        for templ in templates.get("fire", []):
+            if templ is None:
+                continue
+            res = cv2.matchTemplate(gray, templ, cv2.TM_CCOEFF_NORMED)
+            _, max_val, _, _ = cv2.minMaxLoc(res)
+            if max_val >= THRESHOLD:
+                fire_count += 1
+                break  # ya detectamos fuego en este frame
+        
+        time.sleep(0.05)  # pequeña pausa entre frames
+
+    return fire_count >= (confirm_frames // 2 + 1)  # mayoría de frames
+
 
 # -------------------- Berimond --------------------
-def open_coord_config():
-    try:
-        subprocess.Popen([sys.executable, "coords_app.py"])
-    except Exception as e:
-        messagebox.showerror("Error", f"No se pudo abrir el configurador de coordenadas:\n{e}")
 
-with open(COORDS_FILE, "r") as f:
-    COORDS = json.load(f)
+def wait_for_recruit_button(image_path, timeout=10):
+    """Detecta el botón 'Reclutar' y devuelve su posición, sin hacer clic."""
+    start = time.time()
+    while time.time() - start < timeout:
+        pos = detect_on_screen(image_path)
+        if pos:
+            return pos  # devuelve las coordenadas x, y
+        time.sleep(0.2)
+    return None
+
+
+def recruit_troops(subtipo, slots=1):
+    tipo_general = TROOP_TYPES.get(subtipo)
+    imagen = TROOP_IMAGES.get(subtipo)
+    if not tipo_general or not imagen:
+        log(f"⚠️ Tropas desconocidas: {subtipo}")
+        return
+
+    # Aseguramos que slots esté entre 1 y 5
+    slots = max(1, min(slots, 5))
+    log(f"⚔️ Reclutando {subtipo} ({tipo_general}) con {slots} slot(s)...")
+
+    try:
+        # Abrir castillo y barracones
+        wait_and_click("assets/recruit/castle_icon.png")
+        time.sleep(0.2)
+        wait_and_click("assets/recruit/recruit_icon.png")
+        time.sleep(0.2)
+
+        # Buscar y seleccionar tropa
+        found = False
+        for attempt in range(5):
+            result = detect_on_screen(imagen)
+            if result:
+                wait_and_click(result.x, result.y)  # seleccionar tropa
+                found = True
+                break
+            wait_and_click("assets/recruit/left_arrow.png")
+            time.sleep(0.2)
+
+        if not found:
+            for attempt in range(5):
+                result = detect_on_screen(imagen)
+                if result:
+                    wait_and_click(result.x, result.y)  # seleccionar tropa
+                    found = True
+                    break
+                wait_and_click("assets/recruit/right_arrow.png")
+                time.sleep(0.2)
+
+        if not found:
+            log(f"❌ No se pudo encontrar {subtipo}")
+            return
+
+        # Detectar botón "reclutar" una sola vez
+        recruit_btn = detect_on_screen("assets/recruit/recruit.png")
+        if not recruit_btn:
+            log(f"❌ Botón Reclutar no encontrado")
+            return
+
+        # Mover mouse a la posición del botón y dar los clics
+        pyautogui.moveTo(recruit_btn.x, recruit_btn.y)
+        for i in range(slots):
+            pyautogui.click()
+            log(f"➡️ Reclutando {subtipo} (slot {i+1}/{slots})")
+            time.sleep(1.5)  # espera para que la UI procese cada clic
+
+        # Pasos finales
+        for step in ["alliance_help", "exit_menu_barracks", "exit_castle"]:
+            wait_and_click(f"assets/recruit/{step}.png")
+            time.sleep(0.2)
+
+        log(f"✅ Reclutamiento de {subtipo} completado ({slots} slot(s))")
+
+    except Exception as e:
+        log(f"❌ Error en reclutamiento: {e}")
 
 def click_coord(coord: dict):
     x, y = coord["x"], coord["y"]
     pyautogui.moveTo(x, y, duration=0.05)
     pyautogui.click()
 
-# Variable global para elección del caballo
-horse_choice = "monedas"  # por defecto
 
 def attack_berimond():
     global horse_choice
@@ -763,11 +1033,11 @@ def attack_berimond():
             time.sleep(0.4)
 
     # Detectar min_troops
-    if detect_popup("assets/min_troops.png", confidence=0.8, timeout=0.5):
+    if detect_popup("assets/attack/min_troops.png", confidence=0.8, timeout=0.5):
         log("❌ Error: No hay suficientes tropas para atacar")
         # Cerrar errores por imagen
-        wait_and_click("assets/error_close.png")
-        wait_and_click("assets/exit2.png")
+        wait_and_click("assets/attack/error_close.png")
+        wait_and_click("assets/attack/exit2.png")
         return False
 
     # --- Selección del caballo según GUI ---
@@ -778,16 +1048,15 @@ def attack_berimond():
     else:
         log("⚠️ No se encontró coordenada para el caballo elegido")
         return False
-    time.sleep(0.4)
+    time.sleep(0.3)
 
     # Confirmar ataque
     if "confirm_attack2" in COORDS:
         click_coord(COORDS["confirm_attack2"])
-        time.sleep(0.4)
+        time.sleep(0.01)
 
     log(f"✅ Ataque completado con caballo {horse_choice}")
     return True
-
 
 def launch_main_window_berimond():
     global root, spin_comandantes, spin_timer, combo_comandante
@@ -800,14 +1069,15 @@ def launch_main_window_berimond():
     root = tk.Tk()
     root.title("Bot Berimond")
     
-     # --- Barra de menú ---
+    # --- Barra de menú ---
     menu_bar = tk.Menu(root)
     root.config(menu=menu_bar)
 
     settings_menu = tk.Menu(menu_bar, tearoff=0)
     menu_bar.add_cascade(label="Settings", menu=settings_menu)
     settings_menu.add_command(label="Configurar coordenadas", command=coord_config_window)
-
+    settings_menu.add_command(label="Configurar imágenes", command=open_image_config_window)
+    settings_menu.add_command(label="Añadir imágenes recortadas de tropas", command=add_troop_images)
     
     # --- Frame principal ---
     frame = ttk.Frame(root, padding=10)
@@ -907,11 +1177,18 @@ def launch_main_window_berimond():
     # --- Guardar y cargar config ---
     def guardar_config():
         guardar_delay()
-        config = {
+        config = {}
+        if os.path.exists(CONFIG_FILEB):
+            try:
+                with open(CONFIG_FILEB, "r", encoding="utf-8") as f:
+                    config = json.load(f)
+            except:
+                pass
+        config.update({
             "N_COMANDANTES": int(spin_comandantes.get()),
             "TIMER": int(spin_timer.get()),
             "comandante_delays": {str(k): v for k, v in comandante_delays.items()}
-        }
+        })
         try:
             with open(CONFIG_FILEB, "w", encoding="utf-8") as f:
                 json.dump(config, f, indent=4)
@@ -944,9 +1221,9 @@ def launch_main_window_berimond():
     cargar_config()
 
     # --- Bindings ---
-    spin_comandantes.config(command=lambda: [actualizar_combo_comandante(), guardar_config()])
+    spin_comandantes.config(command=actualizar_combo_comandante)  
     combo_comandante.bind("<<ComboboxSelected>>", actualizar_entry_delay)
-    entry_delay.bind("<FocusOut>", lambda e: [guardar_delay(), guardar_config()])
+    entry_delay.bind("<FocusOut>", guardar_delay)
     spin_timer.config(command=guardar_config)
 
     # --- Botones iniciar/detener ---
@@ -969,7 +1246,61 @@ def launch_main_window_berimond():
 
     ttk.Button(frame, text="Iniciar", command=start_attacks).grid(row=2, column=0, pady=5)
     ttk.Button(frame, text="Detener", command=stop_attacks).grid(row=2, column=1, pady=5)
+    
+    # --- Frame para reclutamiento ---
+    recruit_frame = ttk.LabelFrame(root, text="Reclutamiento de tropas", padding=10)
+    recruit_frame.grid(row=3, column=0, padx=10, pady=10, sticky="w")
 
+    current_type = tk.StringVar(value="cuerpo")
+    selected_troop = tk.StringVar()
+    combo_troop = ttk.Combobox(recruit_frame, state="readonly", textvariable=selected_troop, width=30)
+    combo_troop.grid(row=0, column=1, padx=5, pady=5)
+    image_label = tk.Label(recruit_frame)
+    image_label.grid(row=1, column=1, pady=10)
+
+    def update_troop_list(tipo):
+        current_type.set(tipo)
+        troops = [t for t, ttype in TROOP_TYPES.items() if ttype == tipo]
+        combo_troop["values"] = troops
+        if troops:
+            combo_troop.current(0)
+            update_troop_image(troops[0])
+
+    def update_troop_image(troop_name):
+        path = TROOP_IMAGES_ORIGINAL.get(troop_name)
+        if path:
+            try:
+                img = Image.open(path)
+                h = 100
+                w = int(img.width * (h / img.height))
+                img = img.resize((w, h), Image.LANCZOS)
+                img_tk = ImageTk.PhotoImage(img)
+                image_label.configure(image=img_tk)
+                image_label.image = img_tk
+            except Exception as e:
+                log(f"⚠️ Error cargando imagen de {troop_name}: {e}")
+
+    combo_troop.bind("<<ComboboxSelected>>", lambda e: update_troop_image(selected_troop.get()))
+    ttk.Button(recruit_frame, text="⚔️ Melee", command=lambda: update_troop_list("cuerpo")).grid(row=0, column=0, padx=5)
+    ttk.Button(recruit_frame, text="🏹 Ranged", command=lambda: update_troop_list("distancia")).grid(row=0, column=2, padx=5)
+    update_troop_list("cuerpo")
+
+    # Spinbox para seleccionar slots
+    slots_var = tk.IntVar(value=1)
+    ttk.Label(recruit_frame, text="Slots:").grid(row=2, column=0, sticky="e")
+    spin_slots = tk.Spinbox(recruit_frame, from_=1, to=5, width=5, textvariable=slots_var)
+    spin_slots.grid(row=2, column=1, sticky="w", padx=5)
+
+    # Modificar la función de reclutamiento para usar slots
+    def recruit_selected():
+        tropa = selected_troop.get()
+        slots = slots_var.get()  # número de slots seleccionado
+        if not tropa:
+            log("⚠️ No se seleccionó ninguna tropa")
+            return
+        log(f"➡️ Reclutando {tropa} ({current_type.get()}) con {slots} slot(s)...")
+        recruit_troops(tropa, slots)  # pasar slots a la función
+    ttk.Button(recruit_frame, text="Reclutar", command=recruit_selected).grid(row=2, column=0, columnspan=3, pady=10)
     # --- Guardar al cerrar ---
     def on_close():
         guardar_config()
@@ -1049,7 +1380,7 @@ def launch_main_window():
     horse_frame = ttk.LabelFrame(root, text="Tipo de Caballo", padding=10)
     horse_frame.grid(row=2, column=0, padx=10, pady=10, sticky="w")
 
-    horse_var = tk.StringVar(value="monedas")  # por defecto
+    horse_var = tk.StringVar(value="monedas")
 
     rb_monedas = ttk.Radiobutton(horse_frame, text="Caballo Monedas", variable=horse_var, value="monedas",
                              command=lambda: set_horse_choice(horse_var.get()))
@@ -1063,7 +1394,15 @@ def launch_main_window():
         global horse_choice
         horse_choice = choice
         log(f"🐴 Seleccionado: Caballo {choice.capitalize()}")
-
+    # --- Barra de menú ---
+    menu_bar = tk.Menu(root)
+    root.config(menu=menu_bar)
+    # Menu
+    settings_menu = tk.Menu(menu_bar, tearoff=0)
+    menu_bar.add_cascade(label="Settings", menu=settings_menu)
+    settings_menu.add_command(label="Configurar coordenadas", command=coord_config_window)
+    settings_menu.add_command(label="Configurar imágenes", command=open_image_config_window)
+    
     def guardar_delay(*args):
         idx = combo_comandante.current()
         if idx < 0:
@@ -1508,11 +1847,7 @@ def choose_faction_window():
         if col > 2:
             col = 0
             row += 1
-
-
-
     w.mainloop()
-
 
 # ---------- Start ----------
 if __name__ == "__main__":
