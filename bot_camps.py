@@ -707,25 +707,34 @@ def click_image(image_path, confidence=0.85, timeout=4, offset_x=0):
         time.sleep(0.1)
     return False
 
-def wait_and_click(image_path, confidence=0.85, timeout=3, offset_x=0):
+def wait_and_click(image_path, confidence=0.85, timeout=3, offset_x=0, offset_y=0):
     start = time.time()
     templ = cv2.imread(image_path, cv2.IMREAD_GRAYSCALE)
     if templ is None:
         log(f"⚠️ Template no encontrado: {image_path}")
         return False
+
     while time.time() - start < timeout:
+        # ⏸️ Esperar si hay popup activo
+        while POPUP_ACTIVE:
+            log("⚠️ Popup activo, esperando a que se cierre...")
+            time.sleep(0.3)
+
         screen = pyautogui.screenshot()
         screen_gray = cv2.cvtColor(np.array(screen), cv2.COLOR_RGB2GRAY)
         res = cv2.matchTemplate(screen_gray, templ, cv2.TM_CCOEFF_NORMED)
         _, max_val, _, max_loc = cv2.minMaxLoc(res)
+
         if max_val >= confidence:
             h, w = templ.shape
-            cx, cy = max_loc[0] + w//2 + offset_x, max_loc[1] + h//2
+            cx, cy = max_loc[0] + w//2 + offset_x, max_loc[1] + h//2 + offset_y
             pyautogui.moveTo(cx, cy, duration=0.08)
             pyautogui.click()
             return True
+
         time.sleep(0.08)
     return False
+
 
 def safe_attack_click():
     ok = wait_and_click("assets/attack_icon.png", confidence=0.8, timeout=0.25)
@@ -1716,7 +1725,7 @@ def watcher_fire_fast():
         except Exception as e:
             log(f"⚠️ Error en watcher_fire_fast con campamento ({target_camp.x},{target_camp.y}): {e}")
 
-        time.sleep(0.25)
+        time.sleep(0.1)
 
 
 # ---------- Attack cycle ----------
